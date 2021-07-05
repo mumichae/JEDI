@@ -6,6 +6,7 @@ import numpy as np
 import os
 import sys
 import tensorflow as tf
+
 try:
     import ujson as json
 except:
@@ -23,6 +24,7 @@ import utils
 
 utils.handle_flags()
 
+
 def main(argv):
     FLAGS = flags.FLAGS
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = FLAGS.tflog
@@ -34,9 +36,15 @@ def main(argv):
 
     cfg = yaml.load(open(FLAGS.config, 'r'), Loader=yaml.BaseLoader)
     data_prefix = '{}/data.{}.K{}.L{}'.format(
-            cfg['path_data'], FLAGS.cv, FLAGS.K, FLAGS.L) 
-    path_pred  = '{}/pred.{}.K{}.L{}'.format(
-            cfg['path_pred'], FLAGS.cv, FLAGS.K, FLAGS.L)
+        cfg['path_data'], FLAGS.cv, FLAGS.K, FLAGS.L)
+    path_pred = '{}/pred.{}.K{}.L{}'.format(
+        cfg['path_pred'], FLAGS.cv, FLAGS.K, FLAGS.L)
+    path_train_eval = '{}/train_loss.{}.K{}.L{}'.format(
+        cfg['path_pred'], FLAGS.cv, FLAGS.K, FLAGS.L
+    )
+    path_test_eval = '{}/test_loss.{}.K{}.L{}'.format(
+        cfg['path_pred'], FLAGS.cv, FLAGS.K, FLAGS.L
+    )
 
     train_data = utils.Data(data_prefix + '.train', FLAGS)
     test_data = utils.Data(data_prefix + '.test', FLAGS)
@@ -46,7 +54,7 @@ def main(argv):
     # Optimization settings.
     loss_object = tf.keras.losses.BinaryCrossentropy()
     optimizer = tf.keras.optimizers.Adam(
-            learning_rate=FLAGS.learning_rate, amsgrad=True)
+        learning_rate=FLAGS.learning_rate, amsgrad=True)
 
     # Logging metric settings.
     train_loss = tf.keras.metrics.Mean(name='train_loss')
@@ -57,64 +65,73 @@ def main(argv):
     def train_step(data):
         with tf.GradientTape() as tape:
             predictions = model(
-                    data['acceptors'],
-                    data['donors'],
-                    data['length_a'],
-                    data['length_d'])
-            loss = loss_object(data['label'], predictions)
-            loss += sum(model.losses)
-        gradients = tape.gradient(loss, model.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-        
-        train_loss(loss)
-        return predictions 
-    
-    @tf.function
-    def valid_step(data, loss_metric):
-        predictions = model(
                 data['acceptors'],
                 data['donors'],
                 data['length_a'],
                 data['length_d'])
+            loss = loss_object(data['label'], predictions)
+            loss += sum(model.losses)
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+        train_loss(loss)
+        return predictions
+
+    @tf.function
+    def valid_step(data, loss_metric):
+        predictions = model(
+            data['acceptors'],
+            data['donors'],
+            data['length_a'],
+            data['length_d'])
         loss = loss_object(data['label'], predictions)
-        
+
         loss_metric(loss)
-        return predictions 
-    
+        return predictions
+
     def eval(y_true, y_pred):
         y_true = [1 if x > 0.5 else -1 for x in y_true]
         y_pred = [1 if x > 0.5 else -1 for x in y_pred]
         acc = accuracy_score(y_true, y_pred)
         pre = precision_score(y_true, y_pred, pos_label=1)
-        f1  = f1_score(y_true, y_pred)
+        f1 = f1_score(y_true, y_pred)
         mcc = matthews_corrcoef(y_true, y_pred)
         sen = recall_score(y_true, y_pred, pos_label=1)
-        spe = recall_score(y_true, y_pred, pos_label=-1)        
+        spe = recall_score(y_true, y_pred, pos_label=-1)
         return acc, pre, f1, mcc, sen, spe
 
     # Training and Evaluating.
     best_f1 = 0.0
-    for epoch in range(FLAGS.num_epochs):
-        # Reset metrics.
-        train_loss.reset_states()
-        # Training.
-        num_batches = (len(train_data.records) + FLAGS.batch_size - 1)
-        num_batches = num_batches // FLAGS.batch_size
-        preds, lbls = [], []
-        for data in tqdm(train_data.batch_iter(), desc='Training',
-                total=num_batches):
-            preds.extend(list(train_step(data)))
-            lbls.extend(list(data['label']))
-        train_acc, train_pre, train_f1, train_mcc, train_sen, train_spe = \
+    with open(path_train_eval, 'w') as train_out:
+        train_out.write('epoch\tloss\tacc\tpre\tf1\tmcc\tsen\tspe\n')
+        for epoch in range(FLAGS.num_epochs):
+            # Reset metrics.
+            train_loss.reset_states()
+            # Training.
+            num_batches = (len(train_data.records) + FLAGS.batch_size - 1)
+            num_batches = num_batches // FLAGS.batch_size
+            preds, lbls = [], []
+            for data in tqdm(train_data.batch_iter(), desc='Training',
+                             total=num_batches):
+                preds.extend(list(train_step(data)))
+                lbls.extend(list(data['label']))
+            train_acc, train_pre, train_f1, train_mcc, train_sen, train_spe = \
                 eval(lbls, preds)
 
-        tmpl = 'Epoch {} (CV={}, K={}, L={})\n' +\
-                'Ls: {}\tA: {}\t P: {}\tF: {},\tM: {}\tSe: {}\tSp: {}\n'
-        print(tmpl.format(
-            epoch + 1, FLAGS.cv, FLAGS.K, FLAGS.L,
-            train_loss.result(),
-            train_acc, train_pre, train_f1, train_mcc, train_sen, train_spe),
-            file=sys.stderr)
+            tmpl = 'Epoch {} (CV={}, K={}, L={})\n' + \
+                   'Ls: {}\tA: {}\t P: {}\tF: {},\tM: {}\tSe: {}\tSp: {}\n'
+            print(tmpl.format(
+                epoch + 1, FLAGS.cv, FLAGS.K, FLAGS.L,
+                train_loss.result(),
+                train_acc, train_pre, train_f1, train_mcc, train_sen, train_spe),
+                file=sys.stderr)
+            metrics = f'{epoch + 1}\t{train_loss.result()}\t{train_acc}\t{train_pre}\t' \
+                      f'{train_f1}\t{train_mcc}\t{train_sen}\t{train_spe}\n'
+            train_out.write(metrics)
+
+        # logging.info('Saving model to to {}.'.format(FLAGS.model))
+        # tf.saved_model.save(model, FLAGS.model)
+        # model.save(FLAGS.model)
 
     # Testing and Evaluating.
     # Reset metrics.
@@ -124,21 +141,27 @@ def main(argv):
     num_batches = num_batches // FLAGS.batch_size
     preds, lbls = [], []
     for data in tqdm(test_data.batch_iter(is_random=False),
-            desc='Testing', total=num_batches):
+                     desc='Testing', total=num_batches):
         preds.extend(list(valid_step(data, test_loss)))
         lbls.extend(list(data['label']))
 
     lbls = [int(x) for x in lbls]
     preds = [float(x) for x in preds]
     test_acc, test_pre, test_f1, test_mcc, test_sen, test_spe = \
-            eval(lbls, preds)
+        eval(lbls, preds)
 
-    tmpl = 'Testing (CV={}, K={}, L={})\n' +\
-            'Ls: {}\tA: {}\t P: {}\tF: {},\tM: {}\tSe: {}\tSp: {}\n'
+    tmpl = 'Testing (CV={}, K={}, L={})\n' + \
+           'Ls: {}\tA: {}\t P: {}\tF: {},\tM: {}\tSe: {}\tSp: {}\n'
     print(tmpl.format(FLAGS.cv, FLAGS.K, FLAGS.L,
-        test_loss.result(),
-        test_acc, test_pre, test_f1, test_mcc, test_sen, test_spe),
-        file=sys.stderr)
+                      test_loss.result(),
+                      test_acc, test_pre, test_f1, test_mcc, test_sen, test_spe),
+          file=sys.stderr)
+
+    with open(path_test_eval, 'w') as test_out:
+        test_out.write('loss\tacc\tpre\tf1\tmcc\tsen\tspe\n')
+        metrics = f'{test_loss.result()}\t{test_acc}\t{test_pre}\t' \
+                  f'{test_f1}\t{test_mcc}\t{test_sen}\t{test_spe}\n'
+        test_out.write(metrics)
 
     logging.info('Saving testing predictions to to {}.'.format(path_pred))
     with open(path_pred, 'w') as wp:

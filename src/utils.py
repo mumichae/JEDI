@@ -19,6 +19,7 @@ def handle_flags():
     flags.DEFINE_integer('cv', 0, 'Fold for cross-validation (default: 0)')
     flags.DEFINE_integer('K', 3, 'K for k-mers (default: 3)')
     flags.DEFINE_integer('L', 4, 'Length for junction sites (default: 4)')
+    flags.DEFINE_string('model', 'model.tf', 'path to save model')
 
     # Model parameters.
     flags.DEFINE_integer('emb_dim',
