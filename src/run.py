@@ -52,7 +52,6 @@ def main(argv):
     n_validation = int(n_all * 0.1)
     train_idx = np.random.choice(n_all, size=n_validation)
 
-
     train_data = utils.Data(
         [train_data_all[i] for i in train_idx],
         FLAGS
@@ -72,6 +71,7 @@ def main(argv):
 
     # Logging metric settings.
     train_loss = tf.keras.metrics.Mean(name='train_loss')
+    validation_loss = tf.keras.metrics.Mean(name='validation_loss')
     test_loss = tf.keras.metrics.Mean(name='test_loss')
 
     # TF Functions.
@@ -121,7 +121,7 @@ def main(argv):
     for epoch in range(FLAGS.num_epochs):
         # Reset metrics.
         train_loss.reset_states()
-        test_loss.reset_states()
+        validation_loss.reset_states()
         # Training.
         num_batches = (len(train_data.records) + FLAGS.batch_size - 1)
         num_batches = num_batches // FLAGS.batch_size
@@ -147,11 +147,20 @@ def main(argv):
         for data in tqdm(
                 validation_data.batch_iter(is_random=False),
                 desc='Validation',
-                total=n_validation
+                total=num_batches
         ):
-            preds.extend(list(valid_step(data, test_loss)))
+            preds.extend(list(valid_step(data, validation_loss)))
             lbls.extend(list(data['label']))
-        validation_metrics.append((test_loss.result(), *eval(lbls, preds)))
+        validation_metrics.append((validation_loss.result(), *eval(lbls, preds)))
+
+        # early stopping
+        if epoch > 5:
+            # compare accuracies (at index 1)
+            prev_vals = [validation_metrics[i][1] for i in range(epoch - 5, epoch)]
+            cur_val = validation_metrics[epoch][1]
+            val_avg = np.array(prev_vals).mean()
+            if np.abs(cur_val - val_avg) < 0.0001:
+                break
 
     with open(FLAGS.train_stats, 'w') as train_out:
         train_out.write('epoch\tloss\tacc\tpre\tf1\tmcc\tsen\tspe\tdataset\n')
@@ -168,8 +177,8 @@ def main(argv):
     # tf.saved_model.save(model, FLAGS.model)
     # model.save(FLAGS.model)
 
-# Testing and Evaluating.
-# Reset metrics.
+    # Testing and Evaluating.
+    # Reset metrics.
     test_loss.reset_states()
     # Training.
     num_batches = (len(test_data.records) + FLAGS.batch_size - 1)
