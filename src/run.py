@@ -121,6 +121,7 @@ def main(argv):
     for epoch in range(FLAGS.num_epochs):
         # Reset metrics.
         train_loss.reset_states()
+        test_loss.reset_states()
         # Training.
         num_batches = (len(train_data.records) + FLAGS.batch_size - 1)
         num_batches = num_batches // FLAGS.batch_size
@@ -150,7 +151,7 @@ def main(argv):
         ):
             preds.extend(list(valid_step(data, test_loss)))
             lbls.extend(list(data['label']))
-        validation_metrics.append(eval(lbls, preds))
+        validation_metrics.append((test_loss.result(), *eval(lbls, preds)))
 
     with open(FLAGS.train_stats, 'w') as train_out:
         train_out.write('epoch\tloss\tacc\tpre\tf1\tmcc\tsen\tspe\tdataset\n')
@@ -158,9 +159,9 @@ def main(argv):
             train_out.write(
                 f'{epoch + 1}\t{loss}\t{acc}\t{pre}\t{f1}\t{mcc}\t{sen}\t{spe}\ttrain\n'
             )
-        for epoch, (acc, pre, f1, mcc, sen, spe) in enumerate(validation_metrics):
+        for epoch, (loss, acc, pre, f1, mcc, sen, spe) in enumerate(validation_metrics):
             train_out.write(
-                f'{epoch + 1}\t\t{acc}\t{pre}\t{f1}\t{mcc}\t{sen}\t{spe}\tvalidation\n'
+                f'{epoch + 1}\t{loss}\t{acc}\t{pre}\t{f1}\t{mcc}\t{sen}\t{spe}\tvalidation\n'
             )
 
     # logging.info('Saving model to to {}.'.format(FLAGS.model))
