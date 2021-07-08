@@ -20,6 +20,7 @@ def handle_flags():
     flags.DEFINE_integer('K', 3, 'K for k-mers (default: 3)')
     flags.DEFINE_integer('L', 4, 'Length for junction sites (default: 4)')
     flags.DEFINE_string('model', 'model.tf', 'path to save model')
+    flags.DEFINE_string('train_stats', 'model.tf', 'path to save training stats')
 
     # Model parameters.
     flags.DEFINE_integer('emb_dim',
@@ -62,25 +63,11 @@ def limit_gpu_memory_growth():
 
 
 class Data:
-    def __init__(self, file_name, FLAGS):
+    def __init__(self, records, FLAGS):
         self.L = FLAGS.L
         self.max_len = FLAGS.max_len
         self.batch_size = FLAGS.batch_size
-        self.records = []
-        flatten = lambda l: [item for sublist in l for item in sublist]
-        with open(file_name, 'r') as fp:
-            for line in fp:
-                data = json.loads(line)
-                assert(len(data['acceptors'][0]) == self.L)
-                assert(len(data['donors'][0])  == self.L)
-                self.records.append({
-                    'acceptors': flatten(data['acceptors']),
-                    'donors': flatten(data['donors']),
-                    'length_a': len(data['acceptors']),
-                    'length_d': len(data['donors']),
-                    'label': data['label']})
-        logging.info('Loaded {} records from {}.'.format(len(self.records),
-            file_name))
+        self.records = records
 
     def pad(self, x):
         y = np.zeros(self.L * self.max_len, dtype=np.int32)
@@ -116,4 +103,26 @@ class Data:
                 'donors': np.array(cur_d, dtype=np.int32),
                 'length_a': np.array(cur_len_a, dtype=np.int32),
                 'length_d': np.array(cur_len_d, dtype=np.int32)}
+
+    @staticmethod
+    def read_file(file_name, L):
+        records = []
+        flatten = lambda l: [item for sublist in l for item in sublist]
+        with open(file_name, 'r') as fp:
+            for i, line in enumerate(fp):
+                if i == 10:
+                    break
+                data = json.loads(line)
+                assert (len(data['acceptors'][0]) == L)
+                assert (len(data['donors'][0]) == L)
+                records.append({
+                    'acceptors': flatten(data['acceptors']),
+                    'donors': flatten(data['donors']),
+                    'length_a': len(data['acceptors']),
+                    'length_d': len(data['donors']),
+                    'label': data['label']})
+        logging.info(
+            'Loaded {} records from {}.'.format(len(records),file_name)
+        )
+        return records
 

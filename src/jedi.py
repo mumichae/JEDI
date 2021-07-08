@@ -17,7 +17,7 @@ class BahdanauAttention(tf.keras.layers.Layer):
     self.W = tf.keras.layers.Dense(units)
     self.V = tf.keras.layers.Dense(1)
 
-  def call(self, values):
+  def call(self, values, **kwargs):
     # score shape == (batch_size, max_length, 1)
     # we get 1 at the last axis because we are applying score to self.V
     # the shape of the tensor before applying self.V is
@@ -80,7 +80,7 @@ class JEDI(tf.keras.Model):
                 activation='sigmoid',
                 kernel_regularizer=regularizers.l2(self.l2_reg))
 
-    def call(self, xa, xd, xlen_a, xlen_d):
+    def call(self, xa, xd, xlen_a, xlen_d, **kwargs):
         batch_size = xa.get_shape()[0]
         # Input: embeddings in a shape (batch_size, max_len * L).
         # To embeddings with a shape (batch_size, max_len * L, emb_dim).
