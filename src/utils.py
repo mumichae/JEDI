@@ -109,9 +109,7 @@ class Data:
         records = []
         flatten = lambda l: [item for sublist in l for item in sublist]
         with open(file_name, 'r') as fp:
-            for i, line in enumerate(fp):
-                if i == 10:
-                    break
+            for line in fp:
                 data = json.loads(line)
                 assert (len(data['acceptors'][0]) == L)
                 assert (len(data['donors'][0]) == L)
