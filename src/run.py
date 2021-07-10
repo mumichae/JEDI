@@ -169,7 +169,7 @@ def main(argv):
                 early_stop = 0
             else:
                 early_stop += 1
-            if early_stop == 3:
+            if early_stop == 10:
                 print(f'Early stopping at epoch {epoch}', file=sys.stderr)
                 break
 
