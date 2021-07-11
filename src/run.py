@@ -49,10 +49,10 @@ def main(argv):
 
     # split train and validation set
     n_all = len(train_data_all)
-    n_validation = int(n_all * 0.2)
-    print(f'all train data: {n_all}\tvalidation data: {n_validation}')
+    n_train = int(n_all * 0.8)
+    print(f'all train data: {n_all}\ttrain after split: {n_train}')
 
-    train_idx = np.random.choice(n_all, size=n_validation)
+    train_idx = np.random.choice(n_all, size=n_train)
     train_data = utils.Data(
         [train_data_all[i] for i in train_idx],
         FLAGS
@@ -158,18 +158,18 @@ def main(argv):
         validation_metrics.append((validation_loss.result(), *eval(lbls, preds)))
 
         # early stopping
-        if epoch > 5:
+        if epoch > 3:
             # compare losses (at index 0)
-            prev_val = np.array([validation_metrics[i][0] for i in range(epoch - 5, epoch)]).mean()
+            prev_val = np.array([validation_metrics[i][0] for i in range(epoch - 3, epoch)]).mean()
             cur_val = validation_metrics[epoch][0]
             d_val = prev_val - cur_val
             print(f'Validation loss difference: {d_val}', file=sys.stderr)
-            if d_val <= early_stop_val:
+            if 0 < d_val <= early_stop_val:
                 early_stop_val = d_val
                 early_stop = 0
             else:
                 early_stop += 1
-            if early_stop == 10:
+            if early_stop == 3:
                 print(f'Early stopping at epoch {epoch}', file=sys.stderr)
                 break
 
